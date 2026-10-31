@@ -627,9 +627,10 @@ export function renderParametricTemplateToSvg(specOrRaw: any, topicTitle: string
  */
 export async function resolveVisualToSvg(
   payload: string,
-  topicTitle: string = 'Educational Vector Stage'
+  topicTitle: string = 'Educational Vector Stage',
+  declaredEngine?: VisualEngineType
 ): Promise<VisualResolutionResult> {
-  const engine = detectVisualEngine(payload);
+  const engine = (declaredEngine && declaredEngine !== 'svg') ? declaredEngine : detectVisualEngine(payload);
 
   if (engine === 'mermaid') {
     const svg = await renderMermaidToSvg(payload);

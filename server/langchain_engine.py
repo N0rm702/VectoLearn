@@ -921,8 +921,10 @@ class PedagogicalLangChainService:
                     explanation_hi = h_speech
 
             concept = ch.get("visual_concept", "")
-            # In Option A: Generate rich 16:9 widescreen vector SVG illustrations
-            engine_choice = "svg"
+            # Dynamically select optimal multi-engine visual specification (Mermaid, D3, Manim, Pure SVG)
+            engine_choice = ch.get("visual_engine") or ch.get("engine")
+            if not engine_choice or engine_choice not in ["mermaid", "d3", "manim", "svg"]:
+                engine_choice = ["mermaid", "d3", "manim", "svg"][idx % 4]
             timestamp = float(ch.get("timestamp_seconds", ch_idx * seconds_per_frame))
 
             # Stagger generation slightly to keep TPM below Groq rate limits

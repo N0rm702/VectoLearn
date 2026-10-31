@@ -147,7 +147,11 @@ export const OfflineVectorPlayer: React.FC<OfflineVectorPlayerProps> = ({
         case FrameAction.ANIMATE_EXISTING_VECTOR:
           if (frame.svgPayload && frame.svgPayload.trim()) {
             try {
-              const resolved = await resolveVisualToSvg(frame.svgPayload, topicTitle);
+              const resolved = await resolveVisualToSvg(
+                frame.svgPayload,
+                topicTitle,
+                frame.visualEngine as VisualEngineType
+              );
               if (canvasRef.current) {
                 canvasRef.current.innerHTML = resolved.svg;
               }

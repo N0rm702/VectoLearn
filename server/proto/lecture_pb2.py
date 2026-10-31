@@ -24,17 +24,17 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rlecture.proto\x12\tbyteclass\"|\n\x0eLecturePayload\x12\x12\n\nlecture_id\x18\x01 \x01(\t\x12\x13\n\x0btopic_title\x18\x02 \x01(\t\x12\'\n\x06\x66rames\x18\x03 \x03(\x0b\x32\x17.byteclass.LectureFrame\x12\x18\n\x10source_video_url\x18\x04 \x01(\t\"\x80\x01\n\x0cLectureFrame\x12\x19\n\x11timestamp_seconds\x18\x01 \x01(\x02\x12\x13\n\x0bspoken_text\x18\x02 \x01(\t\x12+\n\x0b\x61\x63tion_type\x18\x03 \x01(\x0e\x32\x16.byteclass.FrameAction\x12\x13\n\x0bsvg_payload\x18\x04 \x01(\t*o\n\x0b\x46rameAction\x12\x14\n\x10RENDER_TEXT_ONLY\x10\x00\x12\x15\n\x11INJECT_NEW_VECTOR\x10\x01\x12\x1b\n\x17\x41NIMATE_EXISTING_VECTOR\x10\x02\x12\x16\n\x12\x43LEAR_CANVAS_RESET\x10\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rlecture.proto\x12\tbyteclass\"|\n\x0eLecturePayload\x12\x12\n\nlecture_id\x18\x01 \x01(\t\x12\x13\n\x0btopic_title\x18\x02 \x01(\t\x12\'\n\x06\x66rames\x18\x03 \x03(\x0b\x32\x17.byteclass.LectureFrame\x12\x18\n\x10source_video_url\x18\x04 \x01(\t\"\x97\x01\n\x0cLectureFrame\x12\x19\n\x11timestamp_seconds\x18\x01 \x01(\x02\x12\x13\n\x0bspoken_text\x18\x02 \x01(\t\x12+\n\x0b\x61\x63tion_type\x18\x03 \x01(\x0e\x32\x16.byteclass.FrameAction\x12\x13\n\x0bsvg_payload\x18\x04 \x01(\t\x12\x15\n\rvisual_engine\x18\x05 \x01(\t*o\n\x0b\x46rameAction\x12\x14\n\x10RENDER_TEXT_ONLY\x10\x00\x12\x15\n\x11INJECT_NEW_VECTOR\x10\x01\x12\x1b\n\x17\x41NIMATE_EXISTING_VECTOR\x10\x02\x12\x16\n\x12\x43LEAR_CANVAS_RESET\x10\x03\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'lecture_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_FRAMEACTION']._serialized_start=285
-  _globals['_FRAMEACTION']._serialized_end=396
+  _globals['_FRAMEACTION']._serialized_start=308
+  _globals['_FRAMEACTION']._serialized_end=419
   _globals['_LECTUREPAYLOAD']._serialized_start=28
   _globals['_LECTUREPAYLOAD']._serialized_end=152
   _globals['_LECTUREFRAME']._serialized_start=155
-  _globals['_LECTUREFRAME']._serialized_end=283
+  _globals['_LECTUREFRAME']._serialized_end=306
 # @@protoc_insertion_point(module_scope)
