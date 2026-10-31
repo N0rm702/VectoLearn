@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package byteclass;
+
+message LecturePayload {
+  string lecture_id = 1;
+  string topic_title = 2;
+  repeated LectureFrame frames = 3;
+  string source_video_url = 4;
+}
+
+message LectureFrame {
+  float timestamp_seconds = 1;
+  string spoken_text = 2;
+  FrameAction action_type = 3;
+  string svg_payload = 4; // Contains strict math vectors: <circle>, <path>, <polygon>
+}
+
+enum FrameAction {
+  RENDER_TEXT_ONLY = 0;
+  INJECT_NEW_VECTOR = 1;
+  ANIMATE_EXISTING_VECTOR = 2;
+  CLEAR_CANVAS_RESET = 3;
+}

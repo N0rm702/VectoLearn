@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #f8fafc;
+    color: #0f172a;
+    overflow-x: hidden;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Minimalist Clean Light Card & Panel Styling */
+.minimal-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+}
+
+/* Suppress rogue Mermaid error overlays that bypass JS handlers */
+.error-icon,
+.error-text,
+.mermaid-error,
+div:has(> .error-icon),
+div:has(> .mermaid-error) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+.minimal-panel {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+/* Cinema-Grade 16:9 Widescreen Educational Vector Stage */
+.vector-stage {
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  position: relative;
+  background-color: #030712;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.vector-stage svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 1rem;
+  transition: all 0.25s ease-in-out;
+}
+
+/* Custom Minimalist Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

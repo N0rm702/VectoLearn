@@ -1,0 +1,34 @@
+# Environment variables & API keys (CRITICAL: Never commit secrets)
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+
+# Python virtual environment & cache
+venv/
+env/
+ENV/
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*.py[cod]
+*$py.class
+
+# Node & client build
+node_modules/
+client/node_modules/
+client/dist/
+client/.tmp/
+.tmp/
+
+# Scratch & temporary testing files
+scratch/
+Rasterize to SVG/
+vectorizer-main/
+
+# OS & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
