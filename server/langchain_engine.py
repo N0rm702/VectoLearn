@@ -222,7 +222,7 @@ class PedagogicalLangChainService:
 
         return response.choices[0].message.content or ""
 
-    def _call_groq_router(self, prompt: str, system_prompt: str, max_tokens: int = 2200, temperature: float = 0.2) -> str:
+    def _call_groq_router(self, prompt: str, system_prompt: str, max_tokens: int = 4096, temperature: float = 0.2) -> str:
         """
         Invokes Groq High-Speed Cloud Inference (~500 tokens/sec) with automatic model fallback.
         Includes 429 rate limit backoff retry and token clamping for OTPM safety.
@@ -280,7 +280,7 @@ class PedagogicalLangChainService:
             raise last_err
         return ""
 
-    def _invoke_llm(self, prompt: str, system_prompt: str, max_tokens: int = 2048, temperature: float = 0.3) -> str:
+    def _invoke_llm(self, prompt: str, system_prompt: str, max_tokens: int = 4096, temperature: float = 0.3) -> str:
         """Invokes Groq first (blazing fast ~1s), falls back to Hugging Face router, or raises."""
         if self.groq_api_key and self.groq_api_key.strip():
             try:
@@ -341,9 +341,11 @@ class PedagogicalLangChainService:
             "   - Do NOT introduce overly advanced, graduate-level mathematics, obscure academic jargon, or esoteric formulas UNLESS the transcript itself explicitly introduces and discusses them.\n"
             "   - If the video explains an intuitive, foundational, or general subject, keep the explanation clear, accessible, and grounded at that exact educational level.\n"
             "   - NEVER invent complex differential equations, tensor proofs, or graduate-level theories that the speaker did not mention.\n"
-            "3. STRICT TOPICAL RELEVANCE (ZERO OFF-TOPIC DRIFT):\n"
-            "   - The script and visual diagrams must ALWAYS remain 100% relevant and faithful to the specific topic and what was actually taught in the video.\n"
-            "   - Never wander off into unrelated tangents, speculative theories, or unmentioned academic trivia.\n"
+            "3. STRICT TOPICAL RELEVANCE (ZERO OFF-TOPIC DRIFT & BANTER FILTERING):\n"
+            "   - The script and visual diagrams must ALWAYS remain 100% relevant and faithful to the specific academic topic.\n"
+            "   - BANTER & SLANG REMOVAL: Raw video transcripts frequently contain conversational speaker banter, greetings (e.g. 'hello guddu gudiya', 'master's gunshot lecture', 'bhaiya/didi', 'subscribe', 'welcome back'), or colloquial fillers. You MUST completely ignore and omit all such banter, channel slogans, and greetings.\n"
+            "   - Extract and teach ONLY the authentic scientific principles, core theories, definitions, chemical formulas, and physical mechanisms.\n"
+            "   - Never wander off into unrelated tangents, speculative theories, or unmentioned trivia.\n"
             "   - Every single chapter must directly build understanding of the core subject matter.\n"
             "4. DISCRETE CHUNKING:\n"
             "   - Break down the script into exactly {num_frames} strict, logical timeline frames based on the flow of the topic from beginning to end.\n"
@@ -376,15 +378,17 @@ class PedagogicalLangChainService:
             "Source Video Transcript Content:\n{transcript}\n\n"
             "Instructions:\n"
             "1. Transform the transcript into exactly {num_frames} progressive, comprehensive frames covering 100% of the video's concepts.\n"
-            "2. CALIBRATED COMPLEXITY: Match the educational level of the transcript. Do NOT introduce overly advanced math, jargon, or theories unless the transcript explicitly contains them.\n"
-            "3. STRICT TOPICAL RELEVANCE: Keep every chapter, spoken sentence, and visual concept 100% relevant to the specific topic discussed in the video.\n"
-            "4. DUAL NARRATION: For every chapter provide:\n"
+            "2. BANTER FILTERING: Completely filter out all colloquial speaker banter, greetings (e.g., 'hello guddu gudiya', 'gunshot lecture', 'subscribe'), and jokes from the transcript. Retain ONLY genuine educational curriculum.\n"
+            "3. CALIBRATED COMPLEXITY: Match the educational level of the transcript. Do NOT introduce overly advanced math, jargon, or theories unless the transcript explicitly contains them.\n"
+            "4. STRICT TOPICAL RELEVANCE: Keep every chapter, spoken sentence, and visual concept 100% relevant to the specific topic discussed in the video.\n"
+            "5. DUAL NARRATION: For every chapter provide:\n"
             "   - 'spoken_explanation': 65-90 words in clear, captivating English.\n"
             "   - 'spoken_explanation_hi': 65-90 words in natural, fluent educational Hindi (हिन्दी in Devanagari script) explaining the concept like a master science teacher.\n"
             "   - 'chapter_title': Concise English title.\n"
             "   - 'chapter_title_hi': Concise Hindi title (हिन्दी).\n"
-            "5. Include precise terminology, data points, equations, and examples from the transcript in each spoken explanation.\n"
-            "6. Assign the optimal 'visual_engine' for each frame ('mermaid', 'd3', 'manim', or 'svg').\n\n"
+            "6. Include precise terminology, data points, equations, and examples from the transcript in each spoken explanation.\n"
+            "7. Assign the optimal 'visual_engine' for each frame ('mermaid', 'd3', 'manim', or 'svg').\n"
+            "8. Output format MUST be an array of EXACTLY {num_frames} objects. Do not truncate or stop early.\n\n"
             "Output JSON format strictly as an array of {num_frames} objects:\n"
             "[\n"
             "  {{\n"
@@ -414,7 +418,7 @@ class PedagogicalLangChainService:
 
         if has_transcript and has_api_keys:
             try:
-                max_toks = min(2200, max(1400, num_frames * 140))
+                max_toks = min(4096, max(2800, num_frames * 550))
                 raw_output = self._invoke_llm(
                     prompt=formatted_prompt,
                     system_prompt=system_prompt,
@@ -457,18 +461,15 @@ class PedagogicalLangChainService:
                             "visual_engine": engine_val
                         })
 
-                    # If LLM returned enough frames (>= 75% of requested), use them and expand up to num_frames
-                    if len(normalized) >= max(3, int(num_frames * 0.75)):
-                        synth = self._synthesize_pedagogical_curriculum(topic_title, transcript_text, target_duration_minutes, num_frames, target_language=target_language)
-                        while len(normalized) < num_frames and len(normalized) < len(synth):
-                            idx = len(normalized)
-                            synth_item = synth[idx].copy()
-                            synth_item["chapter_index"] = idx
-                            synth_item["timestamp_seconds"] = round(idx * (target_duration_minutes * 60.0 / num_frames), 1)
-                            normalized.append(synth_item)
+                    # If LLM returned valid high-quality frames (>=2), use them and scale timestamps evenly
+                    if len(normalized) >= 2:
+                        step = (target_duration_minutes * 60.0) / len(normalized)
+                        for i, ch in enumerate(normalized):
+                            ch["chapter_index"] = i
+                            ch["timestamp_seconds"] = round(i * step, 1)
                         return normalized
                     else:
-                        logger.info(f"LLM generated {len(normalized)} frames, below threshold for {num_frames} frames. Using high-density domain synthesizer.")
+                        logger.info(f"LLM generated {len(normalized)} frames, below threshold. Using domain synthesizer.")
             except Exception as e:
                 logger.warning(f"LangChain curriculum generation warning: {e}. Falling back to domain synthesizer.")
 
@@ -634,7 +635,7 @@ class PedagogicalLangChainService:
 
         if (self.groq_api_key and self.groq_api_key.strip()) or (self.hf_token and self.hf_token.strip()):
             try:
-                call_tokens = 900 if engine in ["mermaid", "d3"] else 2200
+                call_tokens = 850 if engine in ["mermaid", "d3"] else 1150
                 raw_out = self._invoke_llm(
                     prompt=prompt_text,
                     system_prompt=system_prompt,
@@ -926,7 +927,7 @@ class PedagogicalLangChainService:
 
             # Stagger generation slightly to keep TPM below Groq rate limits
             if idx > 0:
-                time.sleep(idx * 0.35)
+                time.sleep(0.75)
 
             raw_visual = self.generate_visual_for_concept(
                 topic_title=topic_title,
@@ -949,9 +950,8 @@ class PedagogicalLangChainService:
                 "chapter_title_hi": ch_title_hi
             }
 
-        max_workers = min(len(curriculum), 2)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            frames = list(executor.map(build_frame, enumerate(curriculum)))
+        # Sequential execution with slight sleep between frames to stay well clear of Groq TPM rate limits
+        frames = [build_frame(item) for item in enumerate(curriculum)]
 
         # Sort frames strictly by timestamp
         frames.sort(key=lambda x: x["timestamp_seconds"])
@@ -997,12 +997,18 @@ class PedagogicalLangChainService:
         is_neural = any(w in lower_topic for w in ["neural network", "deep learning", "machine learning", "gradient descent", "backpropagation"])
         is_mitosis = any(w in lower_topic for w in ["mitosis", "meiosis", "cell division", "chromosome segregation"])
         is_biochem = any(w in lower_topic for w in ["photosynthesis", "calvin cycle", "cellular respiration", "krebs cycle"])
+        is_chemistry = any(w in lower_topic or w in lower_text for w in ["atom", "molecule", "dalton", "isotope", "valency", "atomic mass", "chemical reaction", "compound", "element", "ions", "ncert"])
+        is_water_cycle = any(w in lower_topic or w in lower_text for w in ["water cycle", "hydrologic", "hydrological", "evaporation", "condensation", "precipitation", "transpiration", "clouds", "rainfall"])
         is_math = any(w in lower_topic for w in ["calculus", "derivative", "differential equation", "linear algebra"])
         if is_space:
             # 85%+ Pure SVGs for space & astronomical topics, with occasional D3/Manim for quantitative orbital curves
             engine_cycle = ["svg", "svg", "svg", "d3", "svg", "svg", "manim", "svg"]
         elif is_mitosis or is_biochem:
             engine_cycle = ["svg", "svg", "svg", "mermaid", "svg", "svg"]
+        elif is_chemistry:
+            engine_cycle = ["svg", "svg", "d3", "svg", "manim", "svg"]
+        elif is_water_cycle:
+            engine_cycle = ["svg", "svg", "svg", "svg", "d3", "svg"]
         elif is_quantum or is_relativity:
             engine_cycle = ["svg", "svg", "manim", "svg", "d3", "svg"]
         elif is_neural or is_math:
@@ -1365,71 +1371,78 @@ class PedagogicalLangChainService:
             ]
 
         # =====================================================================
-        # DOMAIN 7: CUSTOM TOPIC WITH TRANSCRIPT GROUNDING
+        # DOMAIN 7: CHEMISTRY, ATOMS & MOLECULES (NCERT CLASS 9/10 CURRICULUM)
         # =====================================================================
-        elif transcript_text and transcript_text.strip():
-            raw_lines = [l.strip() for l in transcript_text.split("\n") if l.strip()]
-            cleaned_entries = []
-            time_prefix = re.compile(r"^(\d{1,2}:(?:\d{2}:)?\d{2}(?:\.\d+)?)\s*(.*)$")
-            sound_pattern = re.compile(r"\[(music|applause|laughter|cheering|snicker|sigh|groan)\]", re.IGNORECASE)
-            sponsor_pattern = re.compile(r"(sponsor|nordvpn|caseta|squarespace|brilliant|audible|patreon|subscribe|bell icon|like this video)", re.IGNORECASE)
+        elif is_chemistry:
+            chapters_data = [
+                (
+                    "The Atomic Paradigm: Ancient Philosophy to Modern Science",
+                    "The quest to understand the fundamental building blocks of matter began in ancient civilizations, where philosophers like Maharishi Kanada and Democritus hypothesized that all substances could be divided down to ultimate indivisible particles called atoms. Modern chemistry transformed this philosophical intuition into precise empirical science, establishing that every physical object around us is composed of distinct atomic elements bonded in specific geometric and electromagnetic arrangements.",
+                    "Historical to modern timeline showing Maharishi Kanada and Democritus philosophical division leading to modern atomic orbitals."
+                ),
+                (
+                    "Laws of Chemical Combination: Conservation of Mass",
+                    "At the bedrock of chemical reactions lies Antoine Lavoisier's Law of Conservation of Mass, establishing that matter can neither be created nor destroyed in a chemical reaction. The total mass of the reactants before a transformation strictly equals the total mass of the products formed. Atoms are simply rearranged, broken apart from initial bonds, and recombined into new molecular structures without any loss of fundamental matter.",
+                    "Dual-pan analytical balance schematic showing reactant mass strictly balancing product mass with atomic reassembly."
+                ),
+                (
+                    "Law of Constant Proportions: The Fixed Recipe of Compounds",
+                    "Formulated by Joseph Proust, the Law of Constant Proportions dictates that in any chemical compound, elements are always combined in fixed ratios by mass, regardless of source or method of preparation. For example, pure water always contains hydrogen and oxygen in an exact one-to-eight mass ratio. Whether obtained from glacial meltwater, atmospheric condensation, or a laboratory synthesis, nine grams of water invariably decompose into one gram of hydrogen and eight grams of oxygen.",
+                    "Molecular stoichiometry diagram illustrating the fixed 1 to 8 mass ratio of Hydrogen to Oxygen in H2O."
+                ),
+                (
+                    "Dalton's Atomic Theory & Its Postulates",
+                    "In 1808, John Dalton formalized atomic theory into five foundational postulates: all matter consists of indivisible atoms, all atoms of a given element are identical in mass and properties, atoms combine in whole-number ratios to form compounds, and chemical reactions involve atomic rearrangements. While modern physics later revealed subatomic particles, Dalton's framework laid the rigorous conceptual foundation that unified all chemical observations.",
+                    "Daltonian atomic sphere model illustrating elemental identity, spherical indivisibility, and whole-number compound ratios."
+                ),
+                (
+                    "Atoms, Molecules, and Chemical Valency",
+                    "While individual atoms of most elements cannot exist independently under ambient conditions, they achieve electromagnetic stability by bonding into molecules or forming ionic crystal lattices. Molecules represent the smallest particle of an element or compound capable of independent existence. The combining capacity of an element, known as its valency, determines the precise numerical formula through which atoms share or transfer electrons to achieve complete outer electron shells.",
+                    "Molecular orbital schematic showing covalent bonding between hydrogen and oxygen, and ionic lattice charge sharing."
+                ),
+                (
+                    "Subatomic Reality: Isotopes, Isobars & Atomic Mass Units",
+                    "As atomic spectroscopy and mass spectrometry advanced, science discovered that atoms are not indivisible spheres, but intricate systems composed of protons, neutrons, and electrons. Isotopes are atoms of the same element possessing identical proton numbers but differing numbers of neutrons, resulting in distinct atomic masses. The unified atomic mass unit, defined relative to carbon-twelve, provides the universal scale for quantifying chemical stoichiometry with extraordinary precision.",
+                    "Mass spectrometry coordinate diagram showing isotopic peaks for chlorine-35 and chlorine-37 with nuclear cutaways."
+                )
+            ]
 
-            for line in raw_lines:
-                line_clean = sound_pattern.sub("", line).strip()
-                if not line_clean or sponsor_pattern.search(line_clean):
-                    continue
-                m = time_prefix.match(line_clean)
-                if m:
-                    text = m.group(2).strip()
-                    if text: cleaned_entries.append(text)
-                else:
-                    cleaned_entries.append(line_clean)
-
-            # Join all words to eliminate auto-caption unpunctuated chunks
-            all_words = " ".join(cleaned_entries).split()
-            if len(all_words) >= max(12, num_frames * 4):
-                stop_words = {"this", "that", "there", "these", "those", "video", "about", "which", "would", "could", "should", "their", "because", "going", "really", "actually", "think", "people", "welcome", "hello", "today", "channel"}
-                words_per_frame = max(8, len(all_words) // num_frames)
-
-                openers = [
-                    "At the core of this system, {topic} establishes the governing physical conditions.",
-                    "As the process develops, {topic} directly drives the primary interactions.",
-                    "At this stage, the central operational dynamic is {topic}.",
-                    "The observable behavior of the system shifts markedly under the influence of {topic}.",
-                    "Underlying these mechanics, quantitative relationships govern how {topic} operates.",
-                    "A key physical milestone emerges as {topic} regulates energy and matter transfer.",
-                    "Empirical observations and experimental measurements reveal the precise behavior of {topic}.",
-                    "Integrating these interactions demonstrates how {topic} stabilizes the macroscopic system."
-                ]
-
-                for idx in range(num_frames):
-                    start_w = idx * words_per_frame
-                    end_w = (idx + 1) * words_per_frame if idx < num_frames - 1 else len(all_words)
-                    window_words = all_words[start_w:end_w]
-
-                    # Extract prominent technical terms
-                    meaningful = [w.capitalize() for w in window_words if re.match(r"^[A-Za-z]{4,}$", w) and w.lower() not in stop_words]
-                    key_term = meaningful[0] if meaningful else f"Phase {idx + 1}"
-                    sub_term = meaningful[1] if len(meaningful) > 1 else "Mechanisms"
-                    topic_label = f"{key_term} & {sub_term}"
-
-                    # Group window words into natural 12-16 word punctuated sentences
-                    sub_sentences = []
-                    for s_i in range(0, min(len(window_words), 55), 14):
-                        chunk = window_words[s_i:s_i + 14]
-                        if len(chunk) >= 4:
-                            sub_sentences.append(" ".join(chunk).capitalize() + ".")
-
-                    body_narration = " ".join(sub_sentences) if sub_sentences else f"During this stage, {topic_label.lower()} defines the primary interactions and energetic flow."
-                    if len(body_narration.split()) < 35:
-                        body_narration += f" This establishes the fundamental dynamics of {topic_label.lower()}, revealing how energy, structure, and physical constraints evolve across the system."
-                    opener = openers[idx % len(openers)].format(topic=topic_label)
-                    full_speech = f"{opener} {body_narration} The accompanying illustration highlights how these core parameters interact to govern the overall process."
-
-                    chapter_title = f"{key_term}: Principles & Analysis" if idx > 0 else f"Introduction: {key_term} & Foundations"
-                    visual_concept = f"A clean 16:9 widescreen 800x450 vector diagram illustrating {topic_label} with labeled schematic nodes, directional flow vectors, and clear annotations."
-
-                    chapters_data.append((chapter_title, full_speech, visual_concept))
+        # =====================================================================
+        # DOMAIN 8: THE HYDROLOGICAL WATER CYCLE & ATMOSPHERIC DYNAMICS
+        # =====================================================================
+        elif is_water_cycle:
+            chapters_data = [
+                (
+                    "Solar Insolation & Surface Evaporation",
+                    "The planetary water cycle is driven entirely by solar insolation. Solar radiation warms the surface of oceans, lakes, and rivers, supplying the latent heat of vaporization that excites liquid water molecules. As kinetic energy overcomes intermolecular hydrogen bonding, liquid water transforms into gaseous water vapor, breaking free from surface water bodies and ascending into the lower troposphere as invisible humidity.",
+                    "Solar radiation vector schematic warming ocean surface with kinetic molecular excitation and rising vapor vectors."
+                ),
+                (
+                    "Transpiration: Biological Moisture Transport",
+                    "Beyond open water bodies, terrestrial vegetation plays an enormous role in atmospheric moisture transfer through transpiration. Plants absorb groundwater through their root networks, transport moisture upward through vascular xylem vessels, and release water vapor into the air through microscopic leaf stomata. Together with evaporation, this combined evapotranspiration process pumps trillions of liters of pure vapor into the atmosphere daily.",
+                    "Cutaway of plant root absorption, xylem capillary column, and microscopic stomatal aperture releasing water vapor."
+                ),
+                (
+                    "Atmospheric Cooling & Cloud Condensation",
+                    "As warm water vapor ascends into regions of lower atmospheric pressure, it expands and cools adiabatically according to thermodynamic lapse rates. When temperature drops to the local dew point, the air reaches saturation. Water molecules condense onto microscopic cloud condensation nuclei—such as sea salt and dust aerosols—coalescing into billions of tiny suspended droplets that manifest macroscopically as dense cumulus and stratus clouds.",
+                    "Thermodynamic atmospheric column showing adiabatic expansion, dew point cooling, and aerosol nucleation into cumulus clouds."
+                ),
+                (
+                    "Precipitation & Global Atmospheric Circulation",
+                    "Within turbulent cloud systems, suspended water droplets collide and coalesce into larger, denser hydrometeors. When gravitational pull overcomes aerodynamic updrafts, moisture falls back to Earth as precipitation—in the form of rain, snow, sleet, or hail. Prevailing planetary winds and jet streams distribute these storm systems across continents, regulating regional biomes and replenishing freshwater resources globally.",
+                    "Precipitation dynamics diagram showing collision-coalescence droplet growth, cloud downdrafts, and rainfall over landscapes."
+                ),
+                (
+                    "Surface Runoff, Infiltration & Aquifer Storage",
+                    "Once precipitation reaches the terrestrial landscape, gravity directs its movement through surface runoff and subterranean infiltration. Rainwater carves drainage networks into streams and rivers, flowing back toward continental lakes and global oceans. Concurrently, a substantial portion percolates down through permeable soil layers and porous rock, recharging deep groundwater aquifers that sustain river baseflows during dry seasons.",
+                    "Topographical watershed cross-section showing surface runoff, soil percolation, water table boundary, and confined aquifer recharge."
+                ),
+                (
+                    "Planetary Hydrologic Balance & Climate Equilibrium",
+                    "The Earth's hydrologic cycle functions as a continuous, closed-loop thermodynamic engine. The total volume of planetary water remains constant across geological epochs, continuously cycling between liquid, solid, and vapor phases. By redistributing solar thermal energy from tropical latitudes toward the poles, the global water cycle stabilizes planetary climate equilibrium and sustains all terrestrial life.",
+                    "Closed-loop global hydrologic balance model showing balanced evaporation-precipitation budgets across ocean and land."
+                )
+            ]
 
         # =====================================================================
         # DOMAIN 8: GENERAL ACADEMIC FOUNDATIONS (NO TRANSCRIPT / FALLBACK)
@@ -1589,10 +1602,24 @@ class PedagogicalLangChainService:
                 f"प्रतिरक्षा प्रणाली और टीका विज्ञान (चरण {idx + 1})",
                 "टीका मानव प्रतिरक्षा प्रणाली को रोगजनकों की पहचान करने के लिए प्रशिक्षित करता है। जब एंटीजन शरीर में प्रवेश करते हैं, तो कोशिकाएं एंटीबॉडी बनाती हैं जो भविष्य के संक्रमण से सुरक्षा प्रदान करती हैं।"
             )
+        elif re.search(r"\b(atom|molecule|dalton|isotope|chemical|valency|compound|ncert)\b", topic_lower):
+            return (
+                f"परमाणु और अणु: आधारभूत वैज्ञानिक सिद्धांत (चरण {idx + 1})",
+                "पदार्थ की मूलभूत इकाई परमाणु है। विभिन्न तत्व रासायनिक बंधों के माध्यम से जुड़कर अणु बनाते हैं। द्रव्यमान संरक्षण और स्थिर अनुपात के सार्वभौमिक नियम रासायनिक प्रतिक्रियाओं और परमाणुओं के संयोजन को नियंत्रित करते हैं।"
+            )
+        elif re.search(r"\b(water cycle|hydrologic|evaporation|precipitation|condensation|cloud|rain)\b", topic_lower):
+            return (
+                f"जल चक्र: वाष्पीकरण और वर्षा का चक्रीय संतुलन (चरण {idx + 1})",
+                "जल चक्र पृथ्वी पर जीवन और मौसम का मुख्य आधार है। सौर ऊर्जा से महासागरों और जलाशयों का जल वाष्पीकृत होकर बादलों में संघनित होता है, और वर्षा तथा हिमपात के रूप में पुनः पृथ्वी पर लौटकर जल संतुलन बनाए रखता है।"
+            )
 
+        import html
+        clean_topic = html.unescape(topic)
+        clean_topic = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), clean_topic)
+        clean_topic = re.sub(r'\s+', ' ', clean_topic).strip()
         return (
-            f"{topic}: प्रमुख वैज्ञानिक सिद्धांत (भाग {idx + 1})",
-            f"{topic} के इस चरण में मूल सिद्धांतों और भौतिक प्रक्रियाओं का गहरा विश्लेषण किया जाता है। ऊर्जा और संरचना का यह संतुलन तंत्र को स्थिरता प्रदान करता है।"
+            f"{clean_topic}: प्रमुख वैज्ञानिक सिद्धांत (भाग {idx + 1})",
+            f"{clean_topic} के इस चरण में मूल सिद्धांतों और भौतिक प्रक्रियाओं का गहरा विश्लेषण किया जाता है। ऊर्जा और संरचना का यह संतुलन तंत्र को स्थिरता प्रदान करता है।"
         )
 
     def _generate_domain_visual(
@@ -1632,6 +1659,8 @@ class PedagogicalLangChainService:
         is_neural = any(w in lower_top or w in lower_ch_txt for w in ["neural network", "deep learning", "backpropagation", "gradient descent"])
         is_mitosis = any(w in lower_top or w in lower_ch_txt for w in ["mitosis", "cell division", "meiosis", "chromosome segregation"])
         is_biochem = any(w in lower_top or w in lower_ch_txt for w in ["photosynthesis", "calvin cycle", "cellular respiration", "krebs cycle"])
+        is_chemistry = any(w in lower_top or w in lower_ch_txt for w in ["atom", "molecule", "dalton", "isotope", "valency", "atomic mass", "chemical reaction", "compound", "element", "ions"])
+        is_water_cycle = any(w in lower_top or w in lower_ch_txt for w in ["water cycle", "hydrologic", "evaporation", "condensation", "precipitation", "transpiration", "clouds", "rainfall"])
 
         # Thorough conversational and intro stopword filter to guarantee zero filler labels
         conversational_stopwords = {
@@ -1667,6 +1696,10 @@ class PedagogicalLangChainService:
             domain_terms = ["Lorentz Invariance", "Two-Way Speed of Light", "Spacetime Geodesic", "Clock Synchronization", "Time Dilation Factor", "Null Interval"]
         elif is_biochem:
             domain_terms = ["Thylakoid Membrane", "ATP Synthase Complex", "Calvin-Benson Cycle", "Photon Absorption", "RuBisCO Carboxylation", "Proton Gradient"]
+        elif is_chemistry:
+            domain_terms = ["Atomic Nucleus", "Daltonian Postulates", "Mass Conservation", "Definite Proportions", "Covalent Valence", "Isotopic Distribution"]
+        elif is_water_cycle:
+            domain_terms = ["Solar Insolation", "Thermal Evaporation", "Adiabatic Condensation", "Droplet Coalescence", "Precipitation Runoff", "Hydrologic Equilibrium"]
         else:
             domain_terms = ["Physical Equilibrium", "Dynamic Transformation", "Energy Transfer", "Governing Boundary", "Empirical Observation", "Feedback Regulation"]
 

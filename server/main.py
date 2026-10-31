@@ -1,5 +1,7 @@
 import os
 import sys
+import re
+import html
 import json
 import base64
 from typing import Optional, List, Dict, Any
@@ -176,6 +178,12 @@ def generate_langchain_lecture(req: LangChainGenerateRequest):
         if yt_info.get("duration_minutes") and yt_info["duration_minutes"] > 0:
             video_duration_minutes = yt_info["duration_minutes"]
 
+    import html
+    if topic_title:
+        topic_title = html.unescape(topic_title)
+        topic_title = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), topic_title)
+        topic_title = re.sub(r'\s+', ' ', topic_title).strip()
+
     # Fallback title if still blank
     if not topic_title:
         topic_title = "Educational Scientific Lecture"
@@ -243,6 +251,12 @@ def convert_youtube_transcript_to_json(req: YouTubeToJsonRequest):
             transcript = yt_info.get("transcript", "")
         if yt_info.get("duration_minutes") and yt_info["duration_minutes"] > 0:
             video_duration_minutes = yt_info["duration_minutes"]
+
+    if topic_title:
+        import html
+        topic_title = html.unescape(topic_title)
+        topic_title = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), topic_title)
+        topic_title = re.sub(r'\s+', ' ', topic_title).strip()
 
     if not topic_title:
         topic_title = "YouTube Educational Lecture"

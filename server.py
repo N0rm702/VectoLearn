@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 
 # Ensure server module is discoverable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

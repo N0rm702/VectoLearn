@@ -176,6 +176,16 @@ def extract_youtube_info(url: str, target_language: str = "en") -> Dict[str, Any
     """
     import urllib.request
     import json
+    import html
+
+    def sanitize_metadata_text(text: str) -> str:
+        if not text:
+            return ""
+        # Unescape HTML entities (&amp;, &quot;, &#39;, &lt;, &gt;)
+        s = html.unescape(text)
+        # Unescape any literal or escaped unicode sequences like \u0026
+        s = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), s)
+        return re.sub(r'\s+', ' ', s).strip()
 
     patterns = [
         r"(?:v=|\/v\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})",
@@ -314,12 +324,16 @@ def extract_youtube_info(url: str, target_language: str = "en") -> Dict[str, Any
     else:
         final_duration_seconds = 240.0  # Default 4.0 minutes baseline only if completely unknown
 
+    title = sanitize_metadata_text(title)
+    author = sanitize_metadata_text(author)
+
     if author and title:
         full_title = f"{author}: {title}"
     elif title:
         full_title = title
     else:
         full_title = ""
+    full_title = sanitize_metadata_text(full_title)
 
     # Infer title from transcript text and URL keywords if oEmbed or scrape was unavailable
     if not full_title or full_title.lower() in ["educational video lecture", "youtube", ""]:
