@@ -653,11 +653,11 @@ export async function resolveVisualToSvg(
     return { svg, engine: 'manim', rawPayload: payload };
   }
 
-  // Pure SVG / Basic Geometry
+  // Pure SVG / Vector Scene
   let cleanSvg = payload.trim();
   if (!cleanSvg.startsWith('<svg')) {
     // Wrap basic geometry primitives in widescreen 16:9 canvas
-    cleanSvg = `<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
+    cleanSvg = `<svg viewBox="0 0 800 450" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
   <rect width="800" height="450" fill="#0f172a" rx="14" stroke="#1e293b" stroke-width="1.5"/>
   <rect x="40" y="20" width="720" height="34" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
   <text x="400" y="42" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#38bdf8" text-anchor="middle">${topicTitle.toUpperCase().slice(0, 50)}</text>
@@ -665,6 +665,15 @@ export async function resolveVisualToSvg(
     ${cleanSvg}
   </g>
 </svg>`;
+  } else {
+    // Ensure responsive 16:9 widescreen scaling
+    if (!cleanSvg.includes('width="100%"')) {
+      cleanSvg = cleanSvg.replace(/<svg\b([^>]*)>/, '<svg$1 width="100%" height="100%" preserveAspectRatio="xMidYMid meet">');
+    }
+    // Ensure dark background rect exists
+    if (!cleanSvg.includes('fill="#0f172a"') && !cleanSvg.includes('fill="#0b0f19"') && !cleanSvg.includes('fill="#020617"')) {
+      cleanSvg = cleanSvg.replace(/(<svg\b[^>]*>)/, '$1\n  <rect width="800" height="450" fill="#0f172a" rx="14" stroke="#1e293b" stroke-width="1.5"/>');
+    }
   }
 
   return { svg: cleanSvg, engine: 'svg', rawPayload: payload };

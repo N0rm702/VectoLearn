@@ -873,57 +873,28 @@ class PedagogicalLangChainService:
         target_language: str = "en"
     ) -> Dict[str, Any]:
         """
-        Orchestrates full LangChain pipeline:
-        1. Single-pass compilation (1 API call with deterministic 4-engine orchestrator).
-        2. Fallback to curriculum planning + concurrent multi-engine generation if single-pass is unavailable.
+        Orchestrates full LangChain pipeline for Option A (Rich Widescreen 16:9 Vector Illustrations):
+        1. Curriculum planning with in-depth bilingual teacher voiceover script and calculated timeline.
+        2. High-fidelity 800x450 vector SVG generation for every frame (staggered execution).
         3. AST verification and healing.
         """
-        # Stage 0: Attempt Single-Pass Deterministic Compilation (1 call, bypasses rate limits)
-        try:
-            single_pass_frames = self.compile_lecture_single_pass(
-                topic_title=topic_title,
-                transcript_text=transcript_text,
-                target_duration_minutes=target_duration_minutes,
-                num_frames=num_frames,
-                target_language=target_language
-            )
-            if single_pass_frames and len(single_pass_frames) >= 2:
-                logger.info(f"Single-pass compilation successful ({len(single_pass_frames)} frames).")
-                lecture_id = f"yt-{os.urandom(4).hex()}"
-                return {
-                    "lecture_id": lecture_id,
-                    "topic_title": topic_title,
-                    "source_video_url": source_url,
-                    "target_duration_seconds": target_duration_minutes * 60.0,
-                    "target_language": target_language,
-                    "frames": single_pass_frames
-                }
-        except Exception as e:
-            logger.warning(f"Single-pass attempt encountered exception: {e}. Continuing to multi-stage pipeline...")
-
         import concurrent.futures
+        import time
 
-        # Determine optimal number of frames based on target duration if not explicitly provided
-        # Calibrated for high visual density (a new visual milestone every ~15-22 seconds)
+        # Calibrated for optimal pedagogical pacing (~45-60 seconds per visual milestone)
         if not num_frames or num_frames <= 0:
-            if target_duration_minutes <= 2.5:
-                num_frames = 8
-            elif target_duration_minutes <= 4.5:
-                num_frames = 14
-            elif target_duration_minutes <= 7.0:
-                num_frames = 20
-            elif target_duration_minutes <= 11.0:
-                num_frames = 28
-            elif target_duration_minutes <= 16.0:
-                num_frames = 38
-            elif target_duration_minutes <= 22.0:
-                num_frames = 50
+            if target_duration_minutes <= 3.0:
+                num_frames = 4
+            elif target_duration_minutes <= 6.0:
+                num_frames = 5
             else:
-                num_frames = min(65, max(45, int(target_duration_minutes * 2.8)))
+                num_frames = min(7, max(4, int(target_duration_minutes * 1.0)))
         else:
-            num_frames = max(4, min(70, int(num_frames)))
+            num_frames = max(3, min(8, int(num_frames)))
 
-        # Stage 1: Pedagogical Curriculum
+        seconds_per_frame = (target_duration_minutes * 60.0) / max(num_frames, 1)
+
+        # Stage 1: Pedagogical Curriculum Planning
         curriculum = self.plan_pedagogical_curriculum(
             topic_title=topic_title,
             transcript_text=transcript_text,
@@ -949,8 +920,13 @@ class PedagogicalLangChainService:
                     explanation_hi = h_speech
 
             concept = ch.get("visual_concept", "")
-            engine_choice = ch.get("visual_engine") or "svg"
-            timestamp = float(ch.get("timestamp_seconds", ch_idx * 20.0))
+            # In Option A: Generate rich 16:9 widescreen vector SVG illustrations
+            engine_choice = "svg"
+            timestamp = float(ch.get("timestamp_seconds", ch_idx * seconds_per_frame))
+
+            # Stagger generation slightly to keep TPM below Groq rate limits
+            if idx > 0:
+                time.sleep(idx * 0.35)
 
             raw_visual = self.generate_visual_for_concept(
                 topic_title=topic_title,

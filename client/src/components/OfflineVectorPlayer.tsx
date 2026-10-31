@@ -616,7 +616,7 @@ export const OfflineVectorPlayer: React.FC<OfflineVectorPlayerProps> = ({
       <div className="relative group w-full">
         <div
           ref={canvasRef}
-          className="vector-stage rounded-2xl flex items-center justify-center overflow-hidden transition-all duration-300 relative w-full aspect-[16/9] min-h-[320px] md:min-h-[420px]"
+          className="vector-stage rounded-2xl flex items-center justify-center overflow-hidden transition-all duration-300 relative w-full aspect-[16/9] min-h-[320px] md:min-h-[420px] bg-slate-950 border border-slate-800 shadow-2xl"
         />
 
         {/* Visual Engine Indicator Badge */}
