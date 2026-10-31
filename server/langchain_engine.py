@@ -234,13 +234,12 @@ class PedagogicalLangChainService:
             raise ValueError("No Groq API key configured.")
         client = Groq(api_key=raw_key, timeout=30.0, max_retries=0)
 
-        # High-capacity open models on Groq: 20B fast & token-efficient first, then 120B reasoning, then Qwen
-        candidate_models = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+        # Robust candidate model cascade on Groq
+        candidate_models = ["openai/gpt-oss-20b", "qwen/qwen3.8-27b", "openai/gpt-oss-120b", "allam-2-7b"]
 
         last_err = None
         for model_id in candidate_models:
-            # Qwen enforces 1000 OTPM ceiling; clamp call_tokens to <= 850
-            call_tokens = min(max_tokens, 850) if "qwen" in model_id.lower() else max_tokens
+            call_tokens = max_tokens
 
             for attempt in range(3):
                 try:
@@ -264,11 +263,26 @@ class PedagogicalLangChainService:
                 except Exception as e:
                     last_err = e
                     err_str = str(e)
+                    # Instant detection for daily quota exhaustion (TPD)
+                    if "tokens per day" in err_str.lower() or "tpd" in err_str.lower():
+                        logger.warning(f"Groq {model_id} hit daily token quota (TPD). Instantly switching to next model...")
+                        break
+
                     # Intelligent 429 Rate Limit backoff
                     if "429" in err_str or "rate limit" in err_str.lower():
-                        wait_match = re.search(r"try again in ([\d\.]+)s", err_str, re.IGNORECASE)
-                        wait_seconds = (float(wait_match.group(1)) + 0.6) if wait_match else (2.0 * (attempt + 1))
-                        wait_seconds = min(wait_seconds, 12.0)
+                        wait_match = re.search(r"try again in (?:(\d+)m)?([\d\.]+)s", err_str, re.IGNORECASE)
+                        if wait_match:
+                            m_wait = float(wait_match.group(1) or 0)
+                            s_wait = float(wait_match.group(2) or 0)
+                            wait_seconds = m_wait * 60 + s_wait + 0.5
+                        else:
+                            wait_seconds = 2.0 * (attempt + 1)
+
+                        if wait_seconds > 10.0:
+                            logger.warning(f"Groq {model_id} requires waiting {wait_seconds:.1f}s. Switching immediately to fallback model...")
+                            break
+
+                        wait_seconds = min(wait_seconds, 10.0)
                         logger.warning(f"Groq {model_id} hit rate limit (429). Waiting {wait_seconds:.1f}s before retry {attempt+1}/3...")
                         time.sleep(wait_seconds)
                         continue
@@ -921,10 +935,8 @@ class PedagogicalLangChainService:
                     explanation_hi = h_speech
 
             concept = ch.get("visual_concept", "")
-            # Dynamically select optimal multi-engine visual specification (Mermaid, D3, Manim, Pure SVG)
-            engine_choice = ch.get("visual_engine") or ch.get("engine")
-            if not engine_choice or engine_choice not in ["mermaid", "d3", "manim", "svg"]:
-                engine_choice = ["mermaid", "d3", "manim", "svg"][idx % 4]
+            # In Option A: Generate rich 16:9 widescreen vector SVG illustrations
+            engine_choice = "svg"
             timestamp = float(ch.get("timestamp_seconds", ch_idx * seconds_per_frame))
 
             # Stagger generation slightly to keep TPM below Groq rate limits
@@ -999,8 +1011,8 @@ class PedagogicalLangChainService:
         is_neural = any(w in lower_topic for w in ["neural network", "deep learning", "machine learning", "gradient descent", "backpropagation"])
         is_mitosis = any(w in lower_topic for w in ["mitosis", "meiosis", "cell division", "chromosome segregation"])
         is_biochem = any(w in lower_topic for w in ["photosynthesis", "calvin cycle", "cellular respiration", "krebs cycle"])
-        is_chemistry = any(w in lower_topic or w in lower_text for w in ["atom", "molecule", "dalton", "isotope", "valency", "atomic mass", "chemical reaction", "compound", "element", "ions", "ncert"])
-        is_water_cycle = any(w in lower_topic or w in lower_text for w in ["water cycle", "hydrologic", "hydrological", "evaporation", "condensation", "precipitation", "transpiration", "clouds", "rainfall"])
+        is_chemistry = any(w in lower_topic for w in ["atom", "molecule", "dalton", "isotope", "valency", "atomic mass", "chemical reaction", "ncert chemistry", "acids and bases", "chemical bonding", "periodic table"])
+        is_water_cycle = any(w in lower_topic for w in ["water cycle", "hydrologic cycle", "hydrological cycle", "evaporation and condensation", "water cycle diagram"])
         is_math = any(w in lower_topic for w in ["calculus", "derivative", "differential equation", "linear algebra"])
         if is_space:
             # 85%+ Pure SVGs for space & astronomical topics, with occasional D3/Manim for quantitative orbital curves
@@ -1447,12 +1459,39 @@ class PedagogicalLangChainService:
             ]
 
         # =====================================================================
-        # DOMAIN 8: GENERAL ACADEMIC FOUNDATIONS (NO TRANSCRIPT / FALLBACK)
+        # DOMAIN 8: TRANSCRIPT-DERIVED OR GENERAL ACADEMIC SYNTHESIS
         # =====================================================================
         if not chapters_data:
-            chapters_data = [
-                (
-                    f"Foundations of {topic_title}",
+            # Check if we have an authentic transcript to extract actual educational content from
+            raw_sents = [
+                s.strip() for s in re.split(r'(?<=[.?!])\s+', transcript_text or "")
+                if len(s.strip()) > 20 and not any(b in s.lower() for b in ["subscribe", "welcome", "guddu", "binocs", "channel", "click the bell", "leave a comment", "thanks for watching"])
+            ]
+            if len(raw_sents) >= num_frames:
+                sents_per_frame = max(1, len(raw_sents) // num_frames)
+                for f_i in range(num_frames):
+                    start_s = f_i * sents_per_frame
+                    end_s = (f_i + 1) * sents_per_frame if f_i < num_frames - 1 else len(raw_sents)
+                    segment = raw_sents[start_s:end_s]
+                    speech_block = " ".join(segment[:4])
+                    if len(speech_block.split()) < 45 and len(segment) > 4:
+                        speech_block = " ".join(segment[:6])
+
+                    words = [w.capitalize() for w in re.findall(r"\b[A-Za-z]{4,}\b", speech_block) if w.lower() not in {"this", "that", "these", "those", "their", "there", "about", "would", "could", "should", "because", "system", "process", "first", "second", "third", "which", "after", "before", "other", "where", "while"}]
+                    if len(words) >= 2:
+                        ch_sub = f"{words[0]} & {words[1]}"
+                    elif len(words) == 1:
+                        ch_sub = words[0]
+                    else:
+                        ch_sub = f"Phase {f_i + 1}"
+
+                    ch_title = f"{topic_title}: {ch_sub}"
+                    ch_concept = f"Visual schematic demonstrating {speech_block[:60]}..."
+                    chapters_data.append((ch_title, speech_block, ch_concept))
+            else:
+                chapters_data = [
+                    (
+                        f"Foundations of {topic_title}",
                     f"At its fundamental level, {topic_title} is governed by a precise balance of physical interactions and boundary constraints. Rather than a collection of isolated facts, the system functions as an interconnected dynamic structure. Defining the initial conditions and primary elements reveals how equilibrium is established, providing the crucial baseline for predicting how the entire system responds across every operational stage.",
                     "Overview coordinate diagram illustrating the primary elements and spatial boundaries of the topic."
                 ),
@@ -1661,8 +1700,8 @@ class PedagogicalLangChainService:
         is_neural = any(w in lower_top or w in lower_ch_txt for w in ["neural network", "deep learning", "backpropagation", "gradient descent"])
         is_mitosis = any(w in lower_top or w in lower_ch_txt for w in ["mitosis", "cell division", "meiosis", "chromosome segregation"])
         is_biochem = any(w in lower_top or w in lower_ch_txt for w in ["photosynthesis", "calvin cycle", "cellular respiration", "krebs cycle"])
-        is_chemistry = any(w in lower_top or w in lower_ch_txt for w in ["atom", "molecule", "dalton", "isotope", "valency", "atomic mass", "chemical reaction", "compound", "element", "ions"])
-        is_water_cycle = any(w in lower_top or w in lower_ch_txt for w in ["water cycle", "hydrologic", "evaporation", "condensation", "precipitation", "transpiration", "clouds", "rainfall"])
+        is_chemistry = any(w in lower_top or w in lower_ch_txt for w in ["atom", "molecule", "dalton", "isotope", "valency", "atomic mass", "chemical reaction", "ncert chemistry", "chemical bonding", "periodic table"])
+        is_water_cycle = any(w in lower_top or w in lower_ch_txt for w in ["water cycle", "hydrologic cycle", "hydrological cycle", "evaporation and condensation"])
 
         # Thorough conversational and intro stopword filter to guarantee zero filler labels
         conversational_stopwords = {
@@ -3137,59 +3176,312 @@ class PedagogicalLangChainService:
 </svg>"""
 
             else:
-                # General Scientific & Engineering System
-                return f"""<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
-  <!-- Modern Dark Slate Canvas -->
-  <rect width="800" height="450" fill="#0f172a" rx="14" stroke="#334155" stroke-width="1.5"/>
+                # Extract authentic informative multi-word clauses from the explanation
+                raw_clauses = [
+                    re.sub(r'\s+', ' ', c).strip().replace('&', 'and').replace('<', '').replace('>', '').replace('"', '')
+                    for c in re.split(r'[,.;:!?]\s+', speech_text)
+                    if len(c.strip().split()) >= 3 and not any(w in c.lower() for w in ["welcome", "hello", "today", "subscribe", "binocs", "guddu", "video", "channel"])
+                ]
+
+                # Meaningful clauses ensuring genuine educational statements
+                c1 = raw_clauses[0][:55] if len(raw_clauses) > 0 else f"Initial structural state of {safe_ch[:26]}"
+                c2 = raw_clauses[1][:55] if len(raw_clauses) > 1 else "Dynamic physical interaction and energy transfer"
+                c3 = raw_clauses[2][:55] if len(raw_clauses) > 2 else "System response under governing operational limits"
+                c4 = raw_clauses[3][:55] if len(raw_clauses) > 3 else "System equilibrium and measurable macro result"
+
+                layout_variant = chapter_idx % 4
+
+                if layout_variant == 0:
+                    # =========================================================
+                    # LAYOUT 0: MULTI-COMPONENT SYSTEM BLUEPRINT & ARCHITECTURE
+                    # =========================================================
+                    return f"""<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
+  <defs>
+    <linearGradient id="sys-bg-{chapter_idx}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="card-grad1-{chapter_idx}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="450" fill="url(#sys-bg-{chapter_idx})" rx="14" stroke="#334155" stroke-width="1.5"/>
 
   <!-- Top Title Banner -->
-  <rect x="180" y="16" width="440" height="32" rx="16" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
-  <text x="400" y="37" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#38bdf8" text-anchor="middle">PHYSICAL &amp; ARCHITECTURAL SCHEMATIC: {safe_topic.upper()[:36]}</text>
+  <rect x="140" y="14" width="520" height="34" rx="17" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
+  <text x="400" y="36" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#38bdf8" text-anchor="middle">SYSTEM ARCHITECTURE: {safe_topic.upper()[:36]}</text>
 
-  <!-- Left: Topic-Specific Architectural Process Pipeline -->
-  <g transform="translate(45, 75)">
-    <!-- Stage 1 Block -->
-    <rect x="0" y="20" width="360" height="68" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
-    <circle cx="28" cy="54" r="14" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1.5"/>
-    <text x="28" y="58" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#38bdf8" text-anchor="middle">1</text>
-    <text x="56" y="46" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">FOUNDATIONAL STATE</text>
-    <text x="56" y="66" font-family="system-ui, sans-serif" font-size="10.5" fill="#94a3b8">{t1[:36]}</text>
+  <!-- Left: 2x2 Interconnected Component Cards -->
+  <g transform="translate(40, 70)">
+    <!-- Connecting Cross Bus -->
+    <line x1="200" y1="65" x2="200" y2="245" stroke="#334155" stroke-width="2" stroke-dasharray="4,4"/>
+    <line x1="100" y1="155" x2="300" y2="155" stroke="#334155" stroke-width="2" stroke-dasharray="4,4"/>
+    <circle cx="200" cy="155" r="8" fill="#38bdf8" opacity="0.8"/>
 
-    <!-- Connector 1 -->
-    <line x1="180" y1="88" x2="180" y2="124" stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4"/>
-    <polygon points="175,122 180,132 185,122" fill="#38bdf8"/>
+    <!-- Component Card 1: Core Foundation (Top Left) -->
+    <rect x="10" y="15" width="180" height="110" rx="10" fill="url(#card-grad1-{chapter_idx})" stroke="#38bdf8" stroke-width="1.5"/>
+    <circle cx="36" cy="40" r="12" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="36" y="44" font-family="system-ui, sans-serif" font-size="10" font-weight="800" fill="#38bdf8" text-anchor="middle">01</text>
+    <text x="56" y="44" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">PRIMARY BASE</text>
+    <line x1="22" y1="58" x2="178" y2="58" stroke="#334155" stroke-width="1"/>
+    <text x="22" y="80" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c1[:26]}</text>
+    <text x="22" y="98" font-family="system-ui, sans-serif" font-size="9.5" fill="#38bdf8">{c1[26:52]}</text>
 
-    <!-- Stage 2 Block -->
-    <rect x="0" y="132" width="360" height="68" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
-    <circle cx="28" cy="166" r="14" fill="#064e3b" stroke="#10b981" stroke-width="1.5"/>
-    <text x="28" y="170" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#10b981" text-anchor="middle">2</text>
-    <text x="56" y="158" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">OPERATIONAL MECHANISM</text>
-    <text x="56" y="178" font-family="system-ui, sans-serif" font-size="10.5" fill="#94a3b8">{t2[:36]}</text>
+    <!-- Component Card 2: Operational Flow (Top Right) -->
+    <rect x="210" y="15" width="180" height="110" rx="10" fill="url(#card-grad1-{chapter_idx})" stroke="#10b981" stroke-width="1.5"/>
+    <circle cx="236" cy="40" r="12" fill="#064e3b" stroke="#10b981" stroke-width="1.5"/>
+    <text x="236" y="44" font-family="system-ui, sans-serif" font-size="10" font-weight="800" fill="#10b981" text-anchor="middle">02</text>
+    <text x="256" y="44" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">DYNAMIC FLOW</text>
+    <line x1="222" y1="58" x2="378" y2="58" stroke="#334155" stroke-width="1"/>
+    <text x="222" y="80" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c2[:26]}</text>
+    <text x="222" y="98" font-family="system-ui, sans-serif" font-size="9.5" fill="#10b981">{c2[26:52]}</text>
 
-    <!-- Connector 2 -->
-    <line x1="180" y1="200" x2="180" y2="236" stroke="#10b981" stroke-width="2" stroke-dasharray="4,4"/>
-    <polygon points="175,234 180,244 185,234" fill="#10b981"/>
+    <!-- Component Card 3: Boundary Constraints (Bottom Left) -->
+    <rect x="10" y="175" width="180" height="110" rx="10" fill="url(#card-grad1-{chapter_idx})" stroke="#f59e0b" stroke-width="1.5"/>
+    <circle cx="36" cy="200" r="12" fill="#451a03" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="36" y="204" font-family="system-ui, sans-serif" font-size="10" font-weight="800" fill="#f59e0b" text-anchor="middle">03</text>
+    <text x="56" y="204" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">SYSTEM LIMITS</text>
+    <line x1="22" y1="218" x2="178" y2="218" stroke="#334155" stroke-width="1"/>
+    <text x="22" y="240" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c3[:26]}</text>
+    <text x="22" y="258" font-family="system-ui, sans-serif" font-size="9.5" fill="#f59e0b">{c3[26:52]}</text>
 
-    <!-- Stage 3 Block -->
-    <rect x="0" y="244" width="360" height="68" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
-    <circle cx="28" cy="278" r="14" fill="#451a03" stroke="#f59e0b" stroke-width="1.5"/>
-    <text x="28" y="282" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#f59e0b" text-anchor="middle">3</text>
-    <text x="56" y="270" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">SYSTEM EQUILIBRIUM &amp; RESULT</text>
-    <text x="56" y="290" font-family="system-ui, sans-serif" font-size="10.5" fill="#94a3b8">{t3[:36]}</text>
+    <!-- Component Card 4: Macro Equilibrium (Bottom Right) -->
+    <rect x="210" y="175" width="180" height="110" rx="10" fill="url(#card-grad1-{chapter_idx})" stroke="#c084fc" stroke-width="1.5"/>
+    <circle cx="236" cy="200" r="12" fill="#3b0764" stroke="#c084fc" stroke-width="1.5"/>
+    <text x="236" y="204" font-family="system-ui, sans-serif" font-size="10" font-weight="800" fill="#c084fc" text-anchor="middle">04</text>
+    <text x="256" y="204" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">OBSERVED RESULT</text>
+    <line x1="222" y1="218" x2="378" y2="218" stroke="#334155" stroke-width="1"/>
+    <text x="222" y="240" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c4[:26]}</text>
+    <text x="222" y="258" font-family="system-ui, sans-serif" font-size="9.5" fill="#c084fc">{c4[26:52]}</text>
   </g>
 
-  <!-- Right: Pedagogical Key Card -->
-  <rect x="440" y="75" width="320" height="335" rx="12" fill="#1e293b" fill-opacity="0.9" stroke="#38bdf8" stroke-width="1.2"/>
-  <text x="460" y="108" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#38bdf8">{safe_ch.upper()[:28]}</text>
-  <line x1="460" y1="120" x2="735" y2="120" stroke="#334155" stroke-width="1"/>
-  <text x="460" y="152" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#38bdf8">• Core Mechanism: {t1}</text>
-  <text x="460" y="186" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#10b981">• Dynamic Process: {t2}</text>
-  <text x="460" y="220" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#f59e0b">• Interaction Layer: {t3}</text>
-  <text x="460" y="254" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#c084fc">• Equilibrium State: {t4}</text>
-  <rect x="460" y="285" width="280" height="95" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
-  <text x="475" y="312" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#38bdf8">Key Educational Takeaway:</text>
-  <text x="475" y="334" font-family="system-ui, sans-serif" font-size="10" fill="#e2e8f0">16:9 Widescreen Vector Model</text>
-  <text x="475" y="352" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Directly synchronized with lecture timeline</text>
+  <!-- Right: Glassmorphic Telemetry HUD -->
+  <rect x="450" y="70" width="315" height="345" rx="12" fill="#1e293b" fill-opacity="0.9" stroke="#38bdf8" stroke-width="1.2"/>
+  <text x="470" y="104" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#38bdf8">{safe_ch.upper()[:28]}</text>
+  <line x1="470" y1="116" x2="745" y2="116" stroke="#334155" stroke-width="1"/>
+
+  <text x="470" y="148" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#38bdf8">• Structural Focus: {t1}</text>
+  <text x="470" y="180" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#10b981">• Operational Driver: {t2}</text>
+  <text x="470" y="212" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#f59e0b">• Governing Barrier: {t3}</text>
+  <text x="470" y="244" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#c084fc">• System Outcome: {t4}</text>
+
+  <rect x="470" y="275" width="275" height="115" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="485" y="302" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#38bdf8">Pedagogical Insight:</text>
+  <text x="485" y="324" font-family="system-ui, sans-serif" font-size="10" fill="#e2e8f0">{c1[:38]}</text>
+  <text x="485" y="342" font-family="system-ui, sans-serif" font-size="10" fill="#cbd5e1">{c2[:38]}</text>
+  <text x="485" y="360" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">{c3[:38]}</text>
+</svg>"""
+
+                elif layout_variant == 1:
+                    # =========================================================
+                    # LAYOUT 1: HORIZONTAL CHRONOLOGICAL PROCESS PIPELINE
+                    # =========================================================
+                    return f"""<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
+  <defs>
+    <linearGradient id="pipe-bg-{chapter_idx}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#090d16"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="450" fill="url(#pipe-bg-{chapter_idx})" rx="14" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Top Title Banner -->
+  <rect x="160" y="16" width="480" height="34" rx="17" fill="#1e293b" stroke="#10b981" stroke-width="1.2"/>
+  <text x="400" y="38" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#10b981" text-anchor="middle">PROCESS PIPELINE: {safe_ch.upper()[:36]}</text>
+
+  <!-- 3-Stage Horizontal Flow Across Canvas -->
+  <g transform="translate(45, 95)">
+    <!-- Stage 1 Block: Initial Stimulus -->
+    <rect x="0" y="20" width="210" height="160" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="1.8"/>
+    <circle cx="35" cy="50" r="15" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="35" y="55" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#38bdf8" text-anchor="middle">1</text>
+    <text x="60" y="54" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">INCEPTION</text>
+    <line x1="20" y1="75" x2="190" y2="75" stroke="#334155" stroke-width="1"/>
+    <text x="20" y="100" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#38bdf8">{t1.upper()[:22]}</text>
+    <text x="20" y="122" font-family="system-ui, sans-serif" font-size="9.5" fill="#cbd5e1">{c1[:26]}</text>
+    <text x="20" y="142" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c1[26:52]}</text>
+
+    <!-- Connector 1 -> 2 -->
+    <line x1="210" y1="100" x2="250" y2="100" stroke="#38bdf8" stroke-width="3"/>
+    <polygon points="248,94 260,100 248,106" fill="#38bdf8"/>
+
+    <!-- Stage 2 Block: Core Transformation -->
+    <rect x="260" y="20" width="210" height="160" rx="12" fill="#1e293b" stroke="#10b981" stroke-width="1.8"/>
+    <circle cx="295" cy="50" r="15" fill="#064e3b" stroke="#10b981" stroke-width="1.5"/>
+    <text x="295" y="55" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#10b981" text-anchor="middle">2</text>
+    <text x="320" y="54" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">TRANSFORMATION</text>
+    <line x1="280" y1="75" x2="450" y2="75" stroke="#334155" stroke-width="1"/>
+    <text x="280" y="100" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#10b981">{t2.upper()[:22]}</text>
+    <text x="280" y="122" font-family="system-ui, sans-serif" font-size="9.5" fill="#cbd5e1">{c2[:26]}</text>
+    <text x="280" y="142" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c2[26:52]}</text>
+
+    <!-- Connector 2 -> 3 -->
+    <line x1="470" y1="100" x2="510" y2="100" stroke="#10b981" stroke-width="3"/>
+    <polygon points="508,94 520,100 508,106" fill="#10b981"/>
+
+    <!-- Stage 3 Block: Emergent Equilibrium -->
+    <rect x="520" y="20" width="200" height="160" rx="12" fill="#1e293b" stroke="#f59e0b" stroke-width="1.8"/>
+    <circle cx="555" cy="50" r="15" fill="#451a03" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="555" y="55" font-family="system-ui, sans-serif" font-size="12" font-weight="800" fill="#f59e0b" text-anchor="middle">3</text>
+    <text x="580" y="54" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f8fafc">EQUILIBRIUM</text>
+    <line x1="540" y1="75" x2="700" y2="75" stroke="#334155" stroke-width="1"/>
+    <text x="540" y="100" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#f59e0b">{t3.upper()[:22]}</text>
+    <text x="540" y="122" font-family="system-ui, sans-serif" font-size="9.5" fill="#cbd5e1">{c3[:26]}</text>
+    <text x="540" y="142" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c3[26:52]}</text>
+  </g>
+
+  <!-- Bottom Detailed Synthesis Panel -->
+  <rect x="45" y="300" width="710" height="110" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.2"/>
+  <rect x="65" y="316" width="130" height="24" rx="12" fill="#0c4a6e"/>
+  <text x="130" y="332" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#38bdf8" text-anchor="middle">OBSERVED DYNAMICS</text>
+  <text x="210" y="332" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#f8fafc">{safe_topic}: {safe_ch}</text>
+  <text x="65" y="362" font-family="system-ui, sans-serif" font-size="10" fill="#cbd5e1">• Primary Driver: {c1}</text>
+  <text x="65" y="382" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">• Macro Consequence: {c4}</text>
+</svg>"""
+
+                elif layout_variant == 2:
+                    # =========================================================
+                    # LAYOUT 2: CENTRAL RELATIONAL HUB & INTERACTION ORBIT
+                    # =========================================================
+                    return f"""<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
+  <defs>
+    <radialGradient id="hub-core-{chapter_idx}" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="70%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="800" height="450" fill="#0c1322" rx="14" stroke="#1e293b" stroke-width="1.5"/>
+
+  <!-- Top Title Banner -->
+  <rect x="160" y="14" width="480" height="34" rx="17" fill="#1e293b" stroke="#c084fc" stroke-width="1.2"/>
+  <text x="400" y="36" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#c084fc" text-anchor="middle">RELATIONAL INTERACTION NETWORK: {safe_topic.upper()[:36]}</text>
+
+  <!-- Left: Central Hub & Orbiting Interaction Nodes -->
+  <g transform="translate(240, 240)">
+    <!-- Orbital Rings -->
+    <circle cx="0" cy="0" r="140" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4,4"/>
+    <circle cx="0" cy="0" r="85" fill="none" stroke="#334155" stroke-width="1"/>
+
+    <!-- Radial Interaction Beams -->
+    <line x1="0" y1="0" x2="0" y2="-130" stroke="#38bdf8" stroke-width="2"/>
+    <line x1="0" y1="0" x2="130" y2="0" stroke="#10b981" stroke-width="2"/>
+    <line x1="0" y1="0" x2="0" y2="130" stroke="#f59e0b" stroke-width="2"/>
+    <line x1="0" y1="0" x2="-130" y2="0" stroke="#c084fc" stroke-width="2"/>
+
+    <!-- Central Focal Core -->
+    <circle cx="0" cy="0" r="48" fill="url(#hub-core-{chapter_idx})" stroke="#bae6fd" stroke-width="2"/>
+    <text x="0" y="-4" font-family="system-ui, sans-serif" font-size="10.5" font-weight="800" fill="#ffffff" text-anchor="middle">CORE SYSTEM</text>
+    <text x="0" y="12" font-family="system-ui, sans-serif" font-size="8.5" font-weight="700" fill="#f0f9ff" text-anchor="middle">{t1[:14]}</text>
+
+    <!-- Satellite 1: Top (Cyan) -->
+    <circle cx="0" cy="-130" r="26" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+    <text x="0" y="-126" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#38bdf8" text-anchor="middle">DRIVER</text>
+    <text x="0" y="-162" font-family="system-ui, sans-serif" font-size="8.5" fill="#e2e8f0" text-anchor="middle">{c1[:22]}</text>
+
+    <!-- Satellite 2: Right (Emerald) -->
+    <circle cx="130" cy="0" r="26" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
+    <text x="130" y="4" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#10b981" text-anchor="middle">FLUX</text>
+    <text x="130" y="38" font-family="system-ui, sans-serif" font-size="8.5" fill="#e2e8f0" text-anchor="middle">{c2[:22]}</text>
+
+    <!-- Satellite 3: Bottom (Amber) -->
+    <circle cx="0" cy="130" r="26" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+    <text x="0" y="134" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#f59e0b" text-anchor="middle">LIMIT</text>
+    <text x="0" y="168" font-family="system-ui, sans-serif" font-size="8.5" fill="#e2e8f0" text-anchor="middle">{c3[:22]}</text>
+
+    <!-- Satellite 4: Left (Purple) -->
+    <circle cx="-130" cy="0" r="26" fill="#1e293b" stroke="#c084fc" stroke-width="2"/>
+    <text x="-130" y="4" font-family="system-ui, sans-serif" font-size="8" font-weight="700" fill="#c084fc" text-anchor="middle">STATE</text>
+    <text x="-130" y="38" font-family="system-ui, sans-serif" font-size="8.5" fill="#e2e8f0" text-anchor="middle">{c4[:22]}</text>
+  </g>
+
+  <!-- Right: Glassmorphic Analytical HUD Card -->
+  <rect x="470" y="70" width="295" height="345" rx="12" fill="#1e293b" fill-opacity="0.9" stroke="#c084fc" stroke-width="1.2"/>
+  <text x="490" y="104" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#c084fc">{safe_ch.upper()[:26]}</text>
+  <line x1="490" y1="116" x2="745" y2="116" stroke="#334155" stroke-width="1"/>
+
+  <text x="490" y="146" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#38bdf8">• Primary Node: {t1}</text>
+  <text x="490" y="176" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#10b981">• Vector Gradient: {t2}</text>
+  <text x="490" y="206" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#f59e0b">• Regulatory Threshold: {t3}</text>
+  <text x="490" y="236" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#c084fc">• Dynamic Balance: {t4}</text>
+
+  <rect x="490" y="265" width="255" height="125" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="505" y="292" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#c084fc">Mechanism Synthesis:</text>
+  <text x="505" y="314" font-family="system-ui, sans-serif" font-size="10" fill="#e2e8f0">{c1[:34]}</text>
+  <text x="505" y="334" font-family="system-ui, sans-serif" font-size="10" fill="#cbd5e1">{c2[:34]}</text>
+  <text x="505" y="354" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">{c3[:34]}</text>
+</svg>"""
+
+                else:
+                    # =========================================================
+                    # LAYOUT 3: COMPARATIVE STATE DYNAMICS & BALANCED MATRIX
+                    # =========================================================
+                    return f"""<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" data-engine="svg">
+  <defs>
+    <linearGradient id="mat-bg-{chapter_idx}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="450" fill="url(#mat-bg-{chapter_idx})" rx="14" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Top Title Banner -->
+  <rect x="150" y="16" width="500" height="34" rx="17" fill="#1e293b" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="400" y="38" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#f59e0b" text-anchor="middle">COMPARATIVE EQUILIBRIUM: {safe_ch.upper()[:36]}</text>
+
+  <!-- Left Column: Driving Causes & Inputs -->
+  <g transform="translate(50, 75)">
+    <rect x="0" y="0" width="320" height="255" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="15" y="15" width="290" height="32" rx="6" fill="#0c4a6e"/>
+    <text x="160" y="35" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#38bdf8" text-anchor="middle">INITIAL DRIVING FORCES</text>
+
+    <!-- Parameter Card A -->
+    <rect x="15" y="60" width="290" height="80" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="85" font-family="system-ui, sans-serif" font-size="10.5" font-weight="700" fill="#f8fafc">1. Structural Inception</text>
+    <text x="30" y="105" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c1[:40]}</text>
+    <text x="30" y="123" font-family="system-ui, sans-serif" font-size="9.5" fill="#38bdf8">{c1[40:80]}</text>
+
+    <!-- Parameter Card B -->
+    <rect x="15" y="155" width="290" height="80" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="180" font-family="system-ui, sans-serif" font-size="10.5" font-weight="700" fill="#f8fafc">2. Operational Resistance</text>
+    <text x="30" y="200" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c2[:40]}</text>
+    <text x="30" y="218" font-family="system-ui, sans-serif" font-size="9.5" fill="#10b981">{c2[40:80]}</text>
+  </g>
+
+  <!-- Central Transition Vector -->
+  <g transform="translate(382, 185)">
+    <circle cx="18" cy="18" r="16" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+    <text x="18" y="23" font-family="system-ui, sans-serif" font-size="14" font-weight="900" fill="#f59e0b" text-anchor="middle">→</text>
+  </g>
+
+  <!-- Right Column: Emergent States & Outcomes -->
+  <g transform="translate(430, 75)">
+    <rect x="0" y="0" width="320" height="255" rx="12" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+    <rect x="15" y="15" width="290" height="32" rx="6" fill="#064e3b"/>
+    <text x="160" y="35" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#10b981" text-anchor="middle">SYSTEMIC EQUILIBRIUM &amp; RESULT</text>
+
+    <!-- Parameter Card C -->
+    <rect x="15" y="60" width="290" height="80" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="85" font-family="system-ui, sans-serif" font-size="10.5" font-weight="700" fill="#f8fafc">3. Observed Transformation</text>
+    <text x="30" y="105" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c3[:40]}</text>
+    <text x="30" y="123" font-family="system-ui, sans-serif" font-size="9.5" fill="#f59e0b">{c3[40:80]}</text>
+
+    <!-- Parameter Card D -->
+    <rect x="15" y="155" width="290" height="80" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="180" font-family="system-ui, sans-serif" font-size="10.5" font-weight="700" fill="#f8fafc">4. Stable Equilibrium</text>
+    <text x="30" y="200" font-family="system-ui, sans-serif" font-size="9.5" fill="#94a3b8">{c4[:40]}</text>
+    <text x="30" y="218" font-family="system-ui, sans-serif" font-size="9.5" fill="#c084fc">{c4[40:80]}</text>
+  </g>
+
+  <!-- Bottom Key Takeaway Footer -->
+  <rect x="50" y="345" width="700" height="75" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.2"/>
+  <text x="75" y="372" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#f59e0b">Core Educational Synthesis:</text>
+  <text x="75" y="394" font-family="system-ui, sans-serif" font-size="10" fill="#e2e8f0">{c1[:45]} — {c4[:45]}</text>
 </svg>"""
 
     def _generate_domain_svg(

@@ -36,15 +36,7 @@ def validate_svg_ast(svg_str: str, auto_repair: bool = True) -> Tuple[bool, str,
     cleaned = svg_str.strip()
 
     # Pass through client-side localized engine payloads directly (Mermaid diagrams, D3 JSON, parametric JSON)
-    if (
-        cleaned.startswith("{")
-        or cleaned.startswith("graph")
-        or cleaned.startswith("flowchart")
-        or cleaned.startswith("sequenceDiagram")
-        or cleaned.startswith("stateDiagram")
-        or cleaned.startswith("classDiagram")
-        or ("-->" in cleaned and "<svg" not in cleaned)
-    ):
+    if cleaned.startswith("{") or cleaned.startswith("graph ") or cleaned.startswith("flowchart ") or ("-->" in cleaned and "<svg" not in cleaned):
         return True, cleaned, "Valid client-engine payload (Mermaid/JSON preserved)"
 
     # If the LLM returned SVG elements without root <svg> tag, wrap them in standard 400x400 container
