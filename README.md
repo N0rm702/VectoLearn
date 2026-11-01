@@ -1,6 +1,69 @@
-# Project ByteClass: Video-to-Vector Compression & Offline Edge Playback Engine
+   # Project ByteClass: Video-to-Vector Compression & Offline Edge Playback Engine
 
 > **Target Objective**: Compresses 50 MB/minute video lectures into a **<50 KB/minute** timeline-synchronized vector instruction payload (**99.9% data reduction**), running 100% offline on low-end hardware via a Progressive Web App (PWA).
+
+## 🛠️ Technology Stack
+
+### 1. Edge Client & Progressive Web App (PWA)
+
+| Layer | Technology | Version | Purpose & Architectural Role |
+| :--- | :--- | :--- | :--- |
+| **Framework** | **React** | `^19.2.8` | Component-based UI for the vector stage player, timeline controls, and ingestion studio |
+| **Language** | **TypeScript** | `~6.0.2` | Static typing across lecture schemas, frame action types, and AST structures |
+| **Build Tool** | **Vite** | `^8.3.0` | High-speed bundler, Hot Module Replacement (HMR), and production tree-shaking |
+| **Styling** | **Tailwind CSS** | `^4.3.3` | Modern utility-first CSS framework with dark-slate high-contrast theming |
+| **Offline Cache** | **IndexedDB (`idb`)** | `^8.0.4` | Client-side persistent binary cache (`byteclass_offline_cache`) for `.bin` payloads |
+| **PWA Engine** | **`vite-plugin-pwa`** | `^2.0.0` | Workbox service worker precaching full app shell & assets for 100% offline launch |
+| **Binary Decoder**| **Protobuf.js** | `^8.8.1` | Deserializes raw Protocol Buffer byte streams directly into JavaScript timeline objects |
+| **UI Icons** | **Lucide React** | `^1.57.0` | Modern feather-style vector iconography for timeline HUD, player, and metrics |
+| **Code Linter** | **Oxlint** | `^1.81.0` | Rust-based high-performance TypeScript and JavaScript linter |
+
+### 2. Multi-Engine Vector & Visual Pipeline
+
+| Engine | Technology | Viewport / Specs | Visual Output Type |
+| :--- | :--- | :--- | :--- |
+| **Vector Canvas** | **Pure SVG DOM** | `800x450` (16:9) | Crisp scalable illustrations, cross-sections, anatomy, and apparatus diagrams |
+| **Flowcharts** | **Mermaid.js** | `v11.17.2` | Procedural workflows, biochemical pathways, state transitions, and logic trees |
+| **Curves & Plots** | **D3.js** | `v7.9.0` | Dynamic coordinate plots, rate kinetics, sine waves, and probability distributions |
+| **Math / Manim** | **Parametric SVG** | `800x450` (Chalkboard) | Coordinate plane transformations, geometric proofs, and vector fields |
+
+### 3. Server-Side Compiling Engine
+
+| Component | Technology | Version | Purpose & Architectural Role |
+| :--- | :--- | :--- | :--- |
+| **Web Framework** | **FastAPI** | `Python 3.12` | Asynchronous high-performance REST API handling compilation and ingestion |
+| **ASGI Server** | **Uvicorn** | Latest | Production-grade asynchronous server running the FastAPI application |
+| **Validation** | **Pydantic v2** | Latest | Strict schema enforcement and type validation for all API inputs and outputs |
+| **AST Validator** | **`xml.etree.ElementTree`** | Python Native | Validates XML/SVG AST syntax, auto-repairs unclosed tags, and verifies payloads |
+| **Captions API** | **`youtube_transcript_api`** | Latest | Extracts video subtitles and transcripts across multiple language fallbacks |
+| **Meta Scraper** | **`urllib.request` + `html`** | Python Native | Scrapes ISO 8601 duration (`PT...M...S`), video title, and author metadata |
+
+### 4. AI & Cloud Inference Pipeline
+
+| Layer | Provider / Tool | Models Used | Purpose & Architectural Role |
+| :--- | :--- | :--- | :--- |
+| **Inference Cloud** | **Groq Cloud API** | Fast Cloud LPU (~500 tok/s) | Ultra-low latency single-pass curriculum and vector visual generation |
+| **Primary LLMs** | **Open Source on Groq** | `openai/gpt-oss-20b`<br>`qwen/qwen3.8-27b`<br>`allam-2-7b` | Bilingual teacher narration scripts and structured mathematical diagram specs |
+| **Model Router** | **Custom Groq Router** | Automatic Failover | Dynamic failover with instant daily-quota (TPD) detection and 429 backoff retry |
+| **LLM Chaining** | **LangChain** | `langchain-core` | Structured prompt templates, chain orchestration, and deterministic JSON parsing |
+| **Fallback API** | **Hugging Face Hub** | `huggingface_hub` | Secondary serverless API fallback ensuring cloud inference reliability |
+| **Offline Synthesizer**| **Rule-Based Engine** | Python Regex + AST | Fallback curriculum generator slicing real transcript text when quotas expire |
+
+### 5. Binary Serialization & Data Compression
+
+| Component | Standard / Format | Target Footprint | Performance Metric |
+| :--- | :--- | :--- | :--- |
+| **Schema Definition** | **Protocol Buffers v3** | `lecture.proto` | Compact binary protocol defining timestamps, narration, actions, and vectors |
+| **Compiler Tool** | **`grpcio-tools` / `protoc`** | `.bin` Binary Stream | Compiles structured timeline objects into high-density byte arrays |
+| **Data Compression** | **Binary Vector Serialization** | **< 50 KB / minute** | **99.9% Data Reduction** compared to standard video streaming (~50 MB/min) |
+
+### 6. Edge Audio & Speech Synthesis
+
+| Component | Standard / API | Audio Transfer | Feature Highlight |
+| :--- | :--- | :--- | :--- |
+| **Voice Engine** | **HTML5 Web Speech API** | **0 KB Network Bandwidth** | Synthesizes teacher voiceovers natively on the edge device with zero audio files |
+| **Bilingual Tracks** | **English & Hindi (Devanagari)** | Instant Switching | Real-time toggle between English and Hindi (`spoken_text_hi`) without re-downloading |
+
 
 ---
 
