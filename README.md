@@ -2,6 +2,66 @@
 
 > **Target Objective**: Compresses 50 MB/minute video lectures into a **<50 KB/minute** timeline-synchronized vector instruction payload (**99.9% data reduction**), running 100% offline on low-end hardware via a Progressive Web App (PWA).
 
+
+## 🏗️ 1. Architecture & Multi-Engine Pipeline
+
+```
+[STAGE 1: SERVER CONTENT INGESTION & COMPILATION]
+   Teacher Video / Audio / Topic Script (.mp4 / .mp3 / text / YouTube URL)
+                │
+                ▼
+   ┌────────────────────────────────────────┐
+   │ Single-Pass LLM Compiler Orchestrator  │ ──> Groq High-Speed Cloud Inference (~500 tok/s)
+   │ (Deterministic 4-Engine Target Schema) │ ──> Automatic 429 Rate-Limit Backoff & Retry Loop
+   └────────────────────────────────────────┘
+                │
+                ├─────────────────────────────────────────┐
+                ▼ (Dual-Track Bilingual Scripts)          ▼ (Localized Visual Payloads)
+   ┌───────────────────────────┐             ┌───────────────────────────────────┐
+   │ English & Devanagari      │             │ Localized Vector Engine Selector: │
+   │ Hindi Teacher Voiceovers  │             │ 1. Mermaid.js (Processes/Cycles)  │
+   │ (chapter_title_hi /       │             │ 2. D3.js (Math/Coordinate Curves) │
+   │  spoken_text_hi)          │             │ 3. Parametric (Atom/Science)      │
+   └───────────────────────────┘             │ 4. Basic Geometry (Primitives)    │
+                │                            └───────────────────────────────────┘
+                ▼                                         │
+   ┌───────────────────────────┐                          │
+   │ Syntactic AST Parser      │ <────────────────────────┘
+   │ (xml.etree.ElementTree    │ ──> Verifies XML/DOM tree, auto-heals tags & passes
+   │  auto-healing & checks)   │     through Mermaid/JSON client payloads without corruption
+   └───────────────────────────┘
+                │
+                ▼
+   ┌───────────────────────────┐
+   │ Protobuf v3 Compiler      │ ──> Compresses structured timeline into binary byte array
+   └───────────────────────────┘
+                │
+         (.bin Payload) Generated: Under 50 KB per minute (< 2.5 KB for 15s)
+                │
+[STAGE 2: LOW-BANDWIDTH EDGE NETWORK TRANSFER]
+                │  (Transmitted over 2G Network Throttling / 10 Kbps Pipe)
+                ▼
+[STAGE 3: CLIENT EDGE RENDERING (PWA)]
+   Student Device Storage (IndexedDB Caching Engine via idb & PWA Service Worker)
+                │
+                ▼
+   ┌───────────────────────────┐
+   │ Protobuf.js Binary Decoder│ ──> De-serializes binary stream back into execution objects
+   └───────────────────────────┘
+                │
+         ┌──────┴───────────────────────────────────────┐
+         ▼ (Clock-Synchronized Playback Loop)            ▼ (Hardware-Accelerated 16:9 Canvas)
+   ┌───────────────────────────┐             ┌──────────────────────────────────────────┐
+   │ HTML5 Web Speech TTS      │             │ Universal Visual Engine Resolver         │
+   │ • English Studio Voice    │             │ • Mermaid.js Flowcharts & Step Pipelines │
+   │ • Authentic Devanagari    │             │ • D3.js Smooth Dynamic Mathematical Curves│
+   │   Hindi Voice (हिंदी)     │             │ • Parametric 3Blue1Brown / Bohr Models   │
+   │ • 0 KB Streaming Bandwidth│             │ • 800x450 Dark Slate SVG DOM Vectors     │
+   └───────────────────────────┘             └──────────────────────────────────────────┘
+```
+
+---
+
 ## 🛠️ Technology Stack
 
 ### 1. Edge Client & Progressive Web App (PWA)
@@ -67,90 +127,6 @@
 
 ---
 
-## 🏗️ 1. Architecture & Multi-Engine Pipeline
-
-```
-[STAGE 1: SERVER CONTENT INGESTION & COMPILATION]
-   Teacher Video / Audio / Topic Script (.mp4 / .mp3 / text / YouTube URL)
-                │
-                ▼
-   ┌────────────────────────────────────────┐
-   │ Single-Pass LLM Compiler Orchestrator  │ ──> Groq High-Speed Cloud Inference (~500 tok/s)
-   │ (Deterministic 4-Engine Target Schema) │ ──> Automatic 429 Rate-Limit Backoff & Retry Loop
-   └────────────────────────────────────────┘
-                │
-                ├─────────────────────────────────────────┐
-                ▼ (Dual-Track Bilingual Scripts)          ▼ (Localized Visual Payloads)
-   ┌───────────────────────────┐             ┌───────────────────────────────────┐
-   │ English & Devanagari      │             │ Localized Vector Engine Selector: │
-   │ Hindi Teacher Voiceovers  │             │ 1. Mermaid.js (Processes/Cycles)  │
-   │ (chapter_title_hi /       │             │ 2. D3.js (Math/Coordinate Curves) │
-   │  spoken_text_hi)          │             │ 3. Parametric (Atom/Science)      │
-   └───────────────────────────┘             │ 4. Basic Geometry (Primitives)    │
-                │                            └───────────────────────────────────┘
-                ▼                                         │
-   ┌───────────────────────────┐                          │
-   │ Syntactic AST Parser      │ <────────────────────────┘
-   │ (xml.etree.ElementTree    │ ──> Verifies XML/DOM tree, auto-heals tags & passes
-   │  auto-healing & checks)   │     through Mermaid/JSON client payloads without corruption
-   └───────────────────────────┘
-                │
-                ▼
-   ┌───────────────────────────┐
-   │ Protobuf v3 Compiler      │ ──> Compresses structured timeline into binary byte array
-   └───────────────────────────┘
-                │
-         (.bin Payload) Generated: Under 50 KB per minute (< 2.5 KB for 15s)
-                │
-[STAGE 2: LOW-BANDWIDTH EDGE NETWORK TRANSFER]
-                │  (Transmitted over 2G Network Throttling / 10 Kbps Pipe)
-                ▼
-[STAGE 3: CLIENT EDGE RENDERING (PWA)]
-   Student Device Storage (IndexedDB Caching Engine via idb & PWA Service Worker)
-                │
-                ▼
-   ┌───────────────────────────┐
-   │ Protobuf.js Binary Decoder│ ──> De-serializes binary stream back into execution objects
-   └───────────────────────────┘
-                │
-         ┌──────┴───────────────────────────────────────┐
-         ▼ (Clock-Synchronized Playback Loop)            ▼ (Hardware-Accelerated 16:9 Canvas)
-   ┌───────────────────────────┐             ┌──────────────────────────────────────────┐
-   │ HTML5 Web Speech TTS      │             │ Universal Visual Engine Resolver         │
-   │ • English Studio Voice    │             │ • Mermaid.js Flowcharts & Step Pipelines │
-   │ • Authentic Devanagari    │             │ • D3.js Smooth Dynamic Mathematical Curves│
-   │   Hindi Voice (हिंदी)     │             │ • Parametric 3Blue1Brown / Bohr Models   │
-   │ • 0 KB Streaming Bandwidth│             │ • 800x450 Dark Slate SVG DOM Vectors     │
-   └───────────────────────────┘             └──────────────────────────────────────────┘
-```
-
----
-
-## 🛠️ 2. Technology Stack & Key Highlights
-
-### A. Server-Side Compiling Engine (Python FastAPI)
-- **Runtime**: Python 3.10+ / 3.12 + FastAPI + Uvicorn
-- **Inference Engines**:
-  - **Groq Cloud API** (~500 tokens/sec) with models: `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, and `qwen/qwen3.8-27b`.
-  - **Hugging Face Serverless Chat API** as automatic secondary fallback.
-- **Single-Pass Compilation**: Compiles full multi-chapter timelines (bilingual narration + localized diagrams) in **1 single API request** (~1,500 tokens total), eliminating parallel HTTP 429 rate limit spikes.
-- **Intelligent 429 Retry Backoff**: Automatically parses server wait times (`try again in Xs`), pauses with a 0.6s padding, and safely retries.
-- **OTPM Clamping**: Strictly clamps output token requests for Qwen to $\le 850$ tokens to respect Groq's 1,000 OTPM limit.
-- **Serialization**: Google Protocol Buffers v3 (`lecture.proto` compiled via `grpcio-tools`).
-- **AST Verification**: `xml.etree.ElementTree` verifies XML DOM structures, auto-repairs unclosed tags, and preserves client-side engine payloads (Mermaid, D3 JSON).
-
-### B. Edge Client Runtime Environment (React + TypeScript + PWA)
-- **Framework**: React 19 + TypeScript + Vite + Tailwind CSS v4
-- **Visual Resolvers**:
-  - **Mermaid.js**: Interactive procedural flowcharts, state transitions, timelines, and cycles.
-  - **D3.js**: Dynamic coordinate plotting for equations (sine waves, parabolic curves, exponential decay).
-  - **Parametric / Manim Templates**: Standardized scientific models (e.g. Bohr atom with electron orbitals).
-  - **Basic Geometry / SVG**: 16:9 widescreen (800x450) vector canvas with high-contrast slate aesthetics.
-- **Dual-Track Bilingual Audio**: In-flight instant switching between **English** and **Hindi (Devanagari हिंदी)** using the native HTML5 Web Speech API (**0 KB streaming bandwidth**).
-- **Offline Storage**: IndexedDB database (`byteclass_offline_cache`) via `idb` with Service Worker precaching.
-- **Network Simulator**: Real-time 2G (10 Kbps GPRS / 50 Kbps EDGE) transfer benchmark and 99.9% data reduction meter.
-
----
 ### Workflow
 <img width="208" height="319" alt="Capture" src="https://github.com/user-attachments/assets/a2df6e12-58c2-4388-b32d-8dcf07dc3611" /> 
 <br>
