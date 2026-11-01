@@ -88,6 +88,10 @@
 - **Network Simulator**: Real-time 2G (10 Kbps GPRS / 50 Kbps EDGE) transfer benchmark and 99.9% data reduction meter.
 
 ---
+### Workflow
+<img width="208" height="319" alt="Capture" src="https://github.com/user-attachments/assets/a2df6e12-58c2-4388-b32d-8dcf07dc3611" />
+<img width="267" height="133" alt="Capture2" src="https://github.com/user-attachments/assets/cc150164-c420-4137-a56e-5ca67cec6bab" />
+
 
 ## 🚀 3. Exact Step-by-Step Instructions to Run
 
