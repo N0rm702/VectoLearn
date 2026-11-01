@@ -1,6 +1,6 @@
-   # Project ByteClass: Video-to-Vector Compression & Offline Edge Playback Engine
+# Project VectoLearn: Video-to-Vector Compression & Offline Edge Playback Engine
 
-> **Target Objective**: Compresses 50 MB/minute video lectures into a **<50 KB/minute** timeline-synchronized vector instruction payload (**99.9% data reduction**), running 100% offline on low-end hardware via a Progressive Web App (PWA).
+> **Project VectoLearn**: Compresses 50 MB/minute video lectures into a <50 KB/minute timeline-synchronized vector instruction payload.
 
 
 ## 🏗️ 1. Architecture & Multi-Engine Pipeline
